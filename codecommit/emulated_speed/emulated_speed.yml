@@ -1,0 +1,35 @@
+version: 0.2
+
+env:
+  shell: bash
+
+phases:
+  install:
+    on-failure: ABORT
+    commands:
+      - "echo 'Install docker with the emulator - not available in CodeBuild by default'"
+      - "wget https://github.com/docker/buildx/releases/download/v0.10.5/buildx-v0.10.5.linux-amd64"
+      - "mkdir -p ~/.docker/cli-plugins"
+      - "mv 'buildx-v0.10.5.linux-amd64' ~/.docker/cli-plugins/docker-buildx"
+      - "chmod +x ~/.docker/cli-plugins/docker-buildx"
+      - "docker run --privileged --rm public.ecr.aws/eks-distro-build-tooling/binfmt-misc:qemu-v7.0.0 --install arm64"
+  pre_build:
+    on-failure: ABORT
+    commands:
+      - "cd emulated_speed"
+      - "aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
+  build:
+    on-failure: ABORT
+    commands:
+      - "echo 'Building container image for x86'"
+      - "time docker build --platform linux/amd64 --no-cache -t $ECR_REPO_NAME:compute_bound-x86 ."
+      - "docker tag $ECR_REPO_NAME:compute_bound-x86 $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO_NAME:compute_bound-x86"
+      - "docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO_NAME:compute_bound-x86"
+      - "echo 'Building container image for arm64'"
+      - "time docker buildx build --platform linux/arm64 --no-cache -t $ECR_REPO_NAME:compute_bound-arm64 ."
+      - "docker tag $ECR_REPO_NAME:compute_bound-arm64 $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO_NAME:compute_bound-arm64"
+      - "docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO_NAME:compute_bound-arm64"
+    finally:
+      - "echo 'Save multi-arch image'"
+      - "docker manifest create $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO_NAME:compute_bound $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO_NAME:compute_bound-x86 $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO_NAME:compute_bound-arm64"
+      - "docker manifest push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO_NAME:compute_bound"

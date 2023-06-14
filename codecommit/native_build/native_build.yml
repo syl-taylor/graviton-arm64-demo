@@ -1,0 +1,20 @@
+version: 0.2
+
+env:
+  shell: bash
+
+phases:
+  pre_build:
+    on-failure: ABORT
+    commands:
+      - "cd $FILES_LOCATION"
+      - "aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
+  build:
+    on-failure: ABORT
+    commands:
+      - "echo 'Building a container image natively'"
+      - "time docker build --no-cache -t $ECR_REPO_NAME:$CONTAINER_NAME-$PLATFORM ."
+    finally:
+      - "echo 'Saving image'"
+      - "docker tag $ECR_REPO_NAME:$CONTAINER_NAME-$PLATFORM $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO_NAME:$CONTAINER_NAME-$PLATFORM"
+      - "docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO_NAME:$CONTAINER_NAME-$PLATFORM"
